@@ -1,0 +1,3 @@
+To compile, use the -lpcap switch:
+
+gcc -lpcap -Wall -o tcpanalyser tcpanalyser.c
