@@ -14,10 +14,6 @@
 #include <netinet/ip.h>
 #include <linux/tcp.h>
 
-
-#define ETHER_TYPE_IP (0x0800)
-#define ETHER_TYPE_8021Q (0x8100)
-
 int main (int argc, char *argv[]){
   char errbuff[PCAP_ERRBUF_SIZE];
 
@@ -45,19 +41,29 @@ int main (int argc, char *argv[]){
     const struct tcphdr *tcp;            /* The TCP header */
     uint size_tcp;
 
+    uint packet_len;
+
     while((packet = pcap_next(handle, &header))) {
+      count++;
       ip = (struct ip*)(packet + SIZE_ETHERNET);
       size_ip = 4*ip->ip_hl;
       ip_len = ntohs(ip->ip_len);
-      printf("\n\nIP header length: %u bytes\n", size_ip);
-      printf("Packet length: %u bytes\n", ip_len);
+      
+      printf("\n\nPacket length:\t\t%u bytes\n", ip_len);
+      printf("IP header length: \t%u bytes\n", size_ip);
 
       tcp = (struct tcphdr*)(packet + SIZE_ETHERNET + size_ip);
       size_tcp = 4*tcp->doff;
-      printf("TCP header length: %u bytes\n", size_tcp);
-      printf("SEQ: %x\n",ntohl(tcp->seq));
-      printf("ACK: : %x\n",ntohl(tcp->ack_seq));
+      printf("TCP header length: \t%u bytes\n", size_tcp);
+
+      printf("Data length: \t\t%u bytes\n", (ip_len - size_ip - size_tcp));
+
+      printf("SEQ: \t\t\t%x\n",ntohl(tcp->seq));
+      printf("ACK: \t\t\t%x\n",ntohl(tcp->ack_seq));
+
     }
+
+      printf("\n\ntotal packets : %u\n", count); 
   }
   else{
     printf("%s\n", errbuff);
