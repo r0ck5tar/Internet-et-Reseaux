@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <arpa/inet.h>
 #include <netinet/ip.h>
+#include <string.h>
 #include <linux/tcp.h>
 
 int main (int argc, char *argv[]){
@@ -41,29 +42,45 @@ int main (int argc, char *argv[]){
     const struct tcphdr *tcp;            /* The TCP header */
     uint size_tcp;
 
-    uint packet_len;
+    char server_ip[15] = "";
 
     while((packet = pcap_next(handle, &header))) {
       count++;
       ip = (struct ip*)(packet + SIZE_ETHERNET);
       size_ip = 4*ip->ip_hl;
       ip_len = ntohs(ip->ip_len);
-      
-      printf("\n\nPacket length:\t\t%u bytes\n", ip_len);
-      printf("IP header length: \t%u bytes\n", size_ip);
 
-      tcp = (struct tcphdr*)(packet + SIZE_ETHERNET + size_ip);
-      size_tcp = 4*tcp->doff;
-      printf("TCP header length: \t%u bytes\n", size_tcp);
+      if(count==1) {
+	strcpy(server_ip, inet_ntoa(ip->ip_dst));
+      }
 
-      printf("Data length: \t\t%u bytes\n", (ip_len - size_ip - size_tcp));
+      if(strcmp(server_ip, inet_ntoa(ip->ip_src))==0){
+	printf("server_ip = %s\tcount: %d", server_ip, count);
+	printf("\n\nPacket length:\t\t%u bytes\n", ip_len);
+	printf("IP header length: \t%u bytes\n", size_ip);
 
-      printf("SEQ: \t\t\t%x\n",ntohl(tcp->seq));
-      printf("ACK: \t\t\t%x\n",ntohl(tcp->ack_seq));
+	tcp = (struct tcphdr*)(packet + SIZE_ETHERNET + size_ip);
+	size_tcp = 4*tcp->doff;
+	printf("TCP header length: \t%u bytes\n", size_tcp);
 
+	printf("Data length: \t\t%u bytes\n", (ip_len - size_ip - size_tcp));
+
+	printf("src: %s", inet_ntoa(ip->ip_src));
+	printf("\tdest: %s\n", inet_ntoa(ip->ip_dst));
+	printf("SEQ: \t\t\t%x\n",ntohl(tcp->seq));
+	printf("ACK: \t\t\t%x\n",ntohl(tcp->ack_seq));
+
+	if ((ip_len - size_ip - size_tcp)==0) {
+	  printf("calculated next seq: \t%x\n", ntohl(tcp->seq)+1);
+	}
+	else{
+	  printf("calculated next seq: \t%x\n", ntohl(tcp->seq)+ip_len - size_ip - size_tcp);
+	}
+      }
     }
+  
 
-      printf("\n\ntotal packets : %u\n", count); 
+    printf("\n\ntotal packets : %u\n", count); 
   }
   else{
     printf("%s\n", errbuff);
