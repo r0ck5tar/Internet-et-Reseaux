@@ -13,74 +13,41 @@
 #include <arpa/inet.h>
 #include <netinet/ip.h>
 #include <string.h>
+#include <stdbool.h>
 #include <linux/tcp.h>
 
+char server_ip[15] = "";
+int late_packets = 0;
+char errbuff[PCAP_ERRBUF_SIZE];
+char file[15] = "";
+char*  determine_server_ip();
+void parse_packet(const u_char *packet, int count);
+int find_late_packet(uint expected_seq, int count);
+
 int main (int argc, char *argv[]){
-  char errbuff[PCAP_ERRBUF_SIZE];
+  pcap_t *handle;
 
   if(argc != 2) {
     printf("Provide a path to a .pcap file:\n%s filename", argv[0]);
     exit(1);
   }
 
-  if(pcap_open_offline(argv[1], errbuff) != NULL) {
+  if((handle = pcap_open_offline(argv[1], errbuff)) != NULL) {
+    strcpy(file, argv[1]);
     printf("Success! .pcap file can be opened!\n");
-    pcap_t *handle;
-    char errbuf[PCAP_ERRBUF_SIZE];
 
     struct pcap_pkthdr header; // The header that pcap gives us 
     const u_char *packet; // The actual packet 
-
-    handle = pcap_open_offline(argv[1], errbuff);
-
     int count = 0;
-   
-    const struct ip *ip;              /* The IP header */
-    uint size_ip;
-    uint ip_len;
 
-    const struct tcphdr *tcp;            /* The TCP header */
-    uint size_tcp;
-
-    char server_ip[15] = "";
+    strcpy(server_ip, determine_server_ip());
 
     while((packet = pcap_next(handle, &header))) {
       count++;
-      ip = (struct ip*)(packet + SIZE_ETHERNET);
-      size_ip = 4*ip->ip_hl;
-      ip_len = ntohs(ip->ip_len);
-
-      if(count==1) {
-	strcpy(server_ip, inet_ntoa(ip->ip_dst));
-      }
-
-      if(strcmp(server_ip, inet_ntoa(ip->ip_src))==0){
-	printf("server_ip = %s\tcount: %d", server_ip, count);
-	printf("\n\nPacket length:\t\t%u bytes\n", ip_len);
-	printf("IP header length: \t%u bytes\n", size_ip);
-
-	tcp = (struct tcphdr*)(packet + SIZE_ETHERNET + size_ip);
-	size_tcp = 4*tcp->doff;
-	printf("TCP header length: \t%u bytes\n", size_tcp);
-
-	printf("Data length: \t\t%u bytes\n", (ip_len - size_ip - size_tcp));
-
-	printf("src: %s", inet_ntoa(ip->ip_src));
-	printf("\tdest: %s\n", inet_ntoa(ip->ip_dst));
-	printf("SEQ: \t\t\t%x\n",ntohl(tcp->seq));
-	printf("ACK: \t\t\t%x\n",ntohl(tcp->ack_seq));
-
-	if ((ip_len - size_ip - size_tcp)==0) {
-	  printf("calculated next seq: \t%x\n", ntohl(tcp->seq)+1);
-	}
-	else{
-	  printf("calculated next seq: \t%x\n", ntohl(tcp->seq)+ip_len - size_ip - size_tcp);
-	}
-      }
+      parse_packet(packet, count);
     }
-  
 
-    printf("\n\ntotal packets : %u\n", count); 
+    printf("\n\ntotal packets : %d\nlate packets : %d", count, late_packets); 
   }
   else{
     printf("%s\n", errbuff);
@@ -88,3 +55,110 @@ int main (int argc, char *argv[]){
 
   return 0;
 }
+
+char*  determine_server_ip() {
+  int count = 0;
+  pcap_t *handle;
+  handle = pcap_open_offline(file, errbuff);
+  const u_char *packet;
+  struct pcap_pkthdr header;
+
+  const struct ip *ip;              /* The IP header */
+
+  while(count<3){
+    packet = pcap_next(handle, &header);
+
+    ip = (struct ip*)(packet + SIZE_ETHERNET);
+    
+    if(ip->ip_p==IPPROTO_TCP) {
+      return inet_ntoa(ip->ip_dst);
+    }
+    count++;
+  }  
+
+  return 0;
+}
+
+void parse_packet(const u_char *packet, int count) {
+  const struct ip *ip;              /* The IP header */
+  uint size_ip;
+  uint ip_len;
+
+  const struct tcphdr *tcp;            /* The TCP header */
+  uint size_tcp;
+
+  static uint next_seq = 0;
+  static uint old_seq = 0;
+  static uint old_seq_expected = 0;
+
+  ip = (struct ip*)(packet + SIZE_ETHERNET);
+
+  if(strcmp(server_ip, inet_ntoa(ip->ip_src))==0){
+    size_ip = 4*ip->ip_hl;
+    ip_len = ntohs(ip->ip_len);
+    tcp = (struct tcphdr*)(packet + SIZE_ETHERNET + size_ip);
+    size_tcp = 4*tcp->doff;
+
+    if(ntohl(tcp->seq) == next_seq)  {
+      printf("\nPacket %05d on time\n", count);
+      printf("expected SEQ: \t\t%x\n",next_seq);
+      printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
+
+      if ((ip_len - size_ip - size_tcp)==0) {
+      next_seq = ntohl(tcp->seq)+1;
+      }
+      else{
+	next_seq = ntohl(tcp->seq)+ip_len - size_ip - size_tcp;
+      }
+    }
+
+    else if (ntohl(tcp->seq) > next_seq){
+      printf("\nPacket %05d arrived early\n", count);
+      printf("expected SEQ: \t\t%x\n",next_seq);
+      printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
+
+      old_seq = next_seq;
+      old_seq_expected = count;
+
+      if ((ip_len - size_ip - size_tcp)==0) {
+	next_seq = ntohl(tcp->seq)+1;
+      }
+      else{
+	next_seq = ntohl(tcp->seq)+ip_len - size_ip - size_tcp;
+      }
+    }
+
+    else if(ntohl(tcp->seq) == old_seq) {
+      late_packets++;
+      printf("\nPacket %05d arrived late\n", count);
+      printf("expected SEQ: \t\t%x at %d\n",old_seq, old_seq_expected);
+      printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
+      printf("delay: \t\t%d", count-old_seq_expected);
+
+      if ((ip_len - size_ip - size_tcp)==0) {
+      next_seq = ntohl(tcp->seq)+1;
+      }
+      else{
+	next_seq = ntohl(tcp->seq)+ip_len - size_ip - size_tcp;
+      }
+
+      old_seq=0;
+    } 
+
+    else {
+      late_packets++;
+      old_seq=next_seq;
+      printf("\nPacket %05d out of order\n", count);
+      printf("expected SEQ: \t\t%x\n",next_seq);
+      printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
+
+      if ((ip_len - size_ip - size_tcp)==0) {
+      next_seq = ntohl(tcp->seq)+1;
+      }
+      else{
+	next_seq = ntohl(tcp->seq)+ip_len - size_ip - size_tcp;
+      }
+    }
+  }
+}
+
