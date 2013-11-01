@@ -100,32 +100,18 @@ void parse_packet(const u_char *packet, int count) {
     size_tcp = 4*tcp->doff;
 
     if(ntohl(tcp->seq) == next_seq)  {
-      printf("\nPacket %05d on time\n", count);
-      printf("expected SEQ: \t\t%x\n",next_seq);
-      printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
-
-      if ((ip_len - size_ip - size_tcp)==0) {
-      next_seq = ntohl(tcp->seq)+1;
-      }
-      else{
-	next_seq = ntohl(tcp->seq)+ip_len - size_ip - size_tcp;
-      }
+      //printf("\nPacket %05d on time\n", count);
+      //printf("expected SEQ: \t\t%x\n",next_seq);
+      //printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
     }
 
     else if (ntohl(tcp->seq) > next_seq){
-      printf("\nPacket %05d arrived early\n", count);
-      printf("expected SEQ: \t\t%x\n",next_seq);
-      printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
+      //printf("\nPacket %05d arrived early\n", count);
+      //printf("expected SEQ: \t\t%x\n",next_seq);
+      //printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
 
       old_seq = next_seq;
       old_seq_expected = count;
-
-      if ((ip_len - size_ip - size_tcp)==0) {
-	next_seq = ntohl(tcp->seq)+1;
-      }
-      else{
-	next_seq = ntohl(tcp->seq)+ip_len - size_ip - size_tcp;
-      }
     }
 
     else if(ntohl(tcp->seq) == old_seq) {
@@ -134,14 +120,6 @@ void parse_packet(const u_char *packet, int count) {
       printf("expected SEQ: \t\t%x at %d\n",old_seq, old_seq_expected);
       printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
       printf("delay: \t\t%d", count-old_seq_expected);
-
-      if ((ip_len - size_ip - size_tcp)==0) {
-      next_seq = ntohl(tcp->seq)+1;
-      }
-      else{
-	next_seq = ntohl(tcp->seq)+ip_len - size_ip - size_tcp;
-      }
-
       old_seq=0;
     } 
 
@@ -151,13 +129,13 @@ void parse_packet(const u_char *packet, int count) {
       printf("\nPacket %05d out of order\n", count);
       printf("expected SEQ: \t\t%x\n",next_seq);
       printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
+    }
 
-      if ((ip_len - size_ip - size_tcp)==0) {
+    if ((ip_len - size_ip - size_tcp)==0) {
       next_seq = ntohl(tcp->seq)+1;
-      }
-      else{
-	next_seq = ntohl(tcp->seq)+ip_len - size_ip - size_tcp;
-      }
+    }
+    else{
+      next_seq = ntohl(tcp->seq)+ip_len - size_ip - size_tcp;
     }
   }
 }
