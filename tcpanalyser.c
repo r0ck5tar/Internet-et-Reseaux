@@ -22,10 +22,13 @@ char errbuff[PCAP_ERRBUF_SIZE];
 char file[15] = "";
 char*  determine_server_ip();
 void parse_packet(const u_char *packet, int count);
-int find_late_packet(uint expected_seq, int count);
+FILE *f;
 
 int main (int argc, char *argv[]){
   pcap_t *handle;
+  f = fopen("resultat.csv","w");
+  fprintf(f,"Packet number,SEQ,delay\n");
+  fclose(f);
 
   if(argc != 2) {
     printf("Provide a path to a .pcap file:\n%s filename", argv[0]);
@@ -34,7 +37,6 @@ int main (int argc, char *argv[]){
 
   if((handle = pcap_open_offline(argv[1], errbuff)) != NULL) {
     strcpy(file, argv[1]);
-    printf("Success! .pcap file can be opened!\n");
 
     struct pcap_pkthdr header; // The header that pcap gives us 
     const u_char *packet; // The actual packet 
@@ -47,7 +49,7 @@ int main (int argc, char *argv[]){
       parse_packet(packet, count);
     }
 
-    printf("\n\ntotal packets : %d\nlate packets : %d", count, late_packets); 
+    printf("\n\ntotal packets : %d\nlate packets : %d\n\n", count, late_packets); 
   }
   else{
     printf("%s\n", errbuff);
@@ -75,7 +77,7 @@ char*  determine_server_ip() {
     }
     count++;
   }  
-
+  
   return 0;
 }
 
@@ -105,30 +107,28 @@ void parse_packet(const u_char *packet, int count) {
       //printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
     }
 
-    else if (ntohl(tcp->seq) > next_seq){
-      //printf("\nPacket %05d arrived early\n", count);
-      //printf("expected SEQ: \t\t%x\n",next_seq);
-      //printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
-
+    else if (ntohl(tcp->seq) > next_seq){;
       old_seq = next_seq;
       old_seq_expected = count;
     }
 
     else if(ntohl(tcp->seq) == old_seq) {
       late_packets++;
-      printf("\nPacket %05d arrived late\n", count);
-      printf("expected SEQ: \t\t%x at %d\n",old_seq, old_seq_expected);
-      printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
-      printf("delay: \t\t%d", count-old_seq_expected);
+      f = fopen("resultat.csv","a");
+      fprintf(f, "%d,%x,%d\n", count, ntohl(tcp->seq), count-old_seq_expected);
+      fclose(f);
+
       old_seq=0;
     } 
 
     else {
+      
       late_packets++;
-      old_seq=next_seq;
-      printf("\nPacket %05d out of order\n", count);
-      printf("expected SEQ: \t\t%x\n",next_seq);
-      printf("actual SEQ: \t\t%x\n", ntohl(tcp->seq));
+      f = fopen("resultat.csv","a");
+      fprintf(f, "%d,%x,%d\n", count, ntohl(tcp->seq), count-old_seq_expected);
+      fclose(f);
+    
+      old_seq=next_seq;      
     }
 
     if ((ip_len - size_ip - size_tcp)==0) {
